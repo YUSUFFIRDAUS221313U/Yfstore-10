@@ -1,0 +1,8 @@
+{
+  "name": "YFSTORE ",
+  "description": "Platform e-commerce kebutuhan digital lengkap dengan instant delivery file, sistem 5 role (Guest, Member, Staff, Admin, Super Admin), download center, dan admin panel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
