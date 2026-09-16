@@ -11,6 +11,7 @@ enum class UserRole(val displayName: String, val level: Int, val description: St
 data class User(
     val id: String,
     val name: String,
+    val username: String = "",
     val email: String,
     val phone: String,
     val role: UserRole,

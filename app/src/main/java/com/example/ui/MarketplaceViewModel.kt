@@ -6,6 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.*
 import com.example.data.model.*
 import com.example.data.repository.MarketplaceRepository
+import com.example.security.SecurityManager
+import com.example.ui.admin.RoleFeature
+import com.example.ui.admin.RolePermissionDefaults
+import com.example.ui.admin.*
+import com.example.ui.notifications.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -17,7 +22,9 @@ enum class AppScreen {
     CART_CHECKOUT,
     MEMBER_CENTER,
     ADMIN_PANEL,
-    FAQ_CONTACT
+    FAQ_CONTACT,
+    AUTH,
+    NOTIFICATIONS
 }
 
 enum class AdminTab {
@@ -28,12 +35,14 @@ enum class AdminTab {
     COUPONS,
     ANALYTICS,
     AUDIT_LOGS,
-    PERMISSION_MATRIX
+    PERMISSION_MATRIX,
+    SECURITY_CENTER
 }
 
 data class CurrentUserState(
     val id: String = "usr_member_1",
     val name: String = "Budi Santoso",
+    val username: String = "budisantoso",
     val email: String = "budi.santoso@gmail.com",
     val phone: String = "0812-3456-7890",
     val role: UserRole = UserRole.MEMBER
@@ -71,6 +80,12 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
     // Admin active sub-tab
     val adminTab = MutableStateFlow(AdminTab.DASHBOARD)
 
+    // Auth state
+    val authTab = MutableStateFlow(0) // 0 = Login, 1 = Register
+    val authErrorMessage = MutableStateFlow<String?>(null)
+    val authSuccessMessage = MutableStateFlow<String?>(null)
+    val isAuthLoading = MutableStateFlow(false)
+
     // Applied coupon
     private val _appliedCoupon = MutableStateFlow<CouponEntity?>(null)
     val appliedCoupon: StateFlow<CouponEntity?> = _appliedCoupon.asStateFlow()
@@ -85,6 +100,33 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
     // Snackbar notification message
     private val _userMessage = MutableStateFlow<String?>(null)
     val userMessage: StateFlow<String?> = _userMessage.asStateFlow()
+
+    // Security & Integrity Center States (YF-Shield Defense)
+    val isIntegrityDialogOpen = MutableStateFlow(false)
+    val activeScanResult = MutableStateFlow<SecurityManager.MalwareScanResult?>(null)
+    val activeScanTargetName = MutableStateFlow("")
+    val isSystemScanning = MutableStateFlow(false)
+    val systemScanCompleted = MutableStateFlow(false)
+
+    // Dynamic Role Permissions Management
+    val systemFeatures = MutableStateFlow<List<RoleFeature>>(RolePermissionDefaults.SYSTEM_FEATURES)
+    val rolePermissions = MutableStateFlow<Map<UserRole, Set<String>>>(RolePermissionDefaults.getDefaultPermissions())
+
+    // Store Customization & CMS States (Slider, Flash Sale, Widget, Halaman Statis, Blog, SEO, PWA, Konfigurasi Umum)
+    val banners = MutableStateFlow<List<BannerItem>>(CustomizationPresets.getDefaultBanners())
+    val flashSales = MutableStateFlow<List<FlashSaleCampaign>>(CustomizationPresets.getDefaultFlashSales())
+    val customWidgets = MutableStateFlow<List<CustomWidget>>(CustomizationPresets.getDefaultWidgets())
+    val staticPages = MutableStateFlow<List<StaticPage>>(CustomizationPresets.getDefaultStaticPages())
+    val blogPosts = MutableStateFlow<List<BlogPost>>(CustomizationPresets.getDefaultBlogPosts())
+    val seoSettings = MutableStateFlow<SeoPixelSettings>(SeoPixelSettings())
+    val pwaSettings = MutableStateFlow<PwaSettings>(PwaSettings())
+    val generalConfig = MutableStateFlow<GeneralStoreConfig>(GeneralStoreConfig())
+
+    // Notification Center States
+    val notifications = MutableStateFlow<List<NotificationItem>>(NotificationPresets.getDefaultNotifications())
+    val unreadNotificationCount: StateFlow<Int> = notifications
+        .map { list -> list.count { !it.isRead } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 3)
 
     // Data flows from Repository
     val allProducts: StateFlow<List<ProductEntity>> = repository.allProducts
@@ -137,6 +179,102 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
         _currentScreen.value = AppScreen.PRODUCT_DETAIL
     }
 
+    fun openAuth(tab: Int = 0) {
+        authTab.value = tab
+        authErrorMessage.value = null
+        authSuccessMessage.value = null
+        _currentScreen.value = AppScreen.AUTH
+    }
+
+    fun login(identifier: String, password: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            authErrorMessage.value = null
+            authSuccessMessage.value = null
+            isAuthLoading.value = true
+
+            val result = repository.loginUser(identifier, password)
+            isAuthLoading.value = false
+
+            result.onSuccess { userEntity ->
+                val userRole = try {
+                    UserRole.valueOf(userEntity.role)
+                } catch (e: Exception) {
+                    UserRole.MEMBER
+                }
+                _currentUser.value = CurrentUserState(
+                    id = userEntity.id,
+                    name = userEntity.name,
+                    username = userEntity.username,
+                    email = userEntity.email,
+                    phone = userEntity.phone,
+                    role = userRole
+                )
+                authSuccessMessage.value = "Selamat datang kembali, ${userEntity.name}!"
+                showNotification("Login berhasil sebagai ${userEntity.name}")
+                onSuccess()
+                _currentScreen.value = if (userRole.level >= UserRole.STAFF.level) AppScreen.ADMIN_PANEL else AppScreen.HOME
+            }.onFailure { err ->
+                authErrorMessage.value = err.message ?: "Terjadi kesalahan saat login"
+            }
+        }
+    }
+
+    fun register(
+        name: String,
+        username: String,
+        email: String,
+        phone: String,
+        password: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            authErrorMessage.value = null
+            authSuccessMessage.value = null
+            isAuthLoading.value = true
+
+            val result = repository.registerUser(
+                name = name,
+                username = username,
+                email = email,
+                phone = phone,
+                password = password
+            )
+            isAuthLoading.value = false
+
+            result.onSuccess { newUser ->
+                _currentUser.value = CurrentUserState(
+                    id = newUser.id,
+                    name = newUser.name,
+                    username = newUser.username,
+                    email = newUser.email,
+                    phone = newUser.phone,
+                    role = UserRole.MEMBER
+                )
+                authSuccessMessage.value = "Akun berhasil dibuat! Selamat datang di YFSTORE."
+                showNotification("Registrasi berhasil! Selamat datang, ${newUser.name}")
+                onSuccess()
+                _currentScreen.value = AppScreen.HOME
+            }.onFailure { err ->
+                authErrorMessage.value = err.message ?: "Registrasi gagal. Silakan periksa kembali data Anda."
+            }
+        }
+    }
+
+    fun logout() {
+        _currentUser.value = CurrentUserState(
+            id = "usr_guest_temp",
+            name = "Tamu (Guest)",
+            username = "guest",
+            email = "",
+            phone = "",
+            role = UserRole.GUEST
+        )
+        if (_currentScreen.value == AppScreen.ADMIN_PANEL || _currentScreen.value == AppScreen.MEMBER_CENTER) {
+            _currentScreen.value = AppScreen.HOME
+        }
+        showNotification("Anda telah keluar dari akun.")
+    }
+
     // Role switcher to test the PRD's 5 user personas
     fun switchRole(role: UserRole) {
         when (role) {
@@ -144,6 +282,7 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
                 _currentUser.value = CurrentUserState(
                     id = "usr_guest_temp",
                     name = "Tamu (Guest)",
+                    username = "guest",
                     email = "",
                     phone = "",
                     role = UserRole.GUEST
@@ -158,6 +297,7 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
                 _currentUser.value = CurrentUserState(
                     id = "usr_member_1",
                     name = "Budi Santoso",
+                    username = "budisantoso",
                     email = "budi.santoso@gmail.com",
                     phone = "0812-3456-7890",
                     role = UserRole.MEMBER
@@ -165,37 +305,40 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
                 if (_currentScreen.value == AppScreen.ADMIN_PANEL) {
                     _currentScreen.value = AppScreen.HOME
                 }
-                showNotification("Beralih ke akun Member: Budi Santoso")
+                showNotification("Beralih ke akun Member: Budi Santoso (@budisantoso)")
             }
             UserRole.STAFF -> {
                 _currentUser.value = CurrentUserState(
                     id = "usr_staff_1",
                     name = "Ahmad Fauzi (Staff)",
+                    username = "ahmadstaff",
                     email = "staff.ahmad@digimarket.id",
                     phone = "0813-9876-5432",
                     role = UserRole.STAFF
                 )
-                showNotification("Beralih ke akun Staff: Ahmad Fauzi (Akses Panel Operasional)")
+                showNotification("Beralih ke akun Staff: Ahmad Fauzi (@ahmadstaff)")
             }
             UserRole.ADMIN -> {
                 _currentUser.value = CurrentUserState(
                     id = "usr_admin_1",
                     name = "Siti Rahmawati (Admin)",
+                    username = "sitiadmin",
                     email = "admin.siti@digimarket.id",
                     phone = "0821-4433-2211",
                     role = UserRole.ADMIN
                 )
-                showNotification("Beralih ke akun Admin: Siti Rahmawati (Akses Penuh Toko)")
+                showNotification("Beralih ke akun Admin: Siti Rahmawati (@sitiadmin)")
             }
             UserRole.SUPER_ADMIN -> {
                 _currentUser.value = CurrentUserState(
                     id = "usr_superadmin_1",
                     name = "Hendra Wijaya (Super Admin)",
+                    username = "hendrasuper",
                     email = "superadmin.hendra@digimarket.id",
                     phone = "0811-0011-2233",
                     role = UserRole.SUPER_ADMIN
                 )
-                showNotification("Beralih ke Super Admin: Hendra Wijaya (Akses Sistem & Audit Log)")
+                showNotification("Beralih ke Super Admin: Hendra Wijaya (@hendrasuper)")
             }
         }
     }
@@ -293,6 +436,15 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
             _appliedCoupon.value = null
             recentCompletedOrder.value = order
             showNotification("Pembayaran Berhasil! File digital siap diunduh.")
+
+            // Trigger In-App Notification
+            addNotification(
+                title = "Pesanan #${order.id} Berhasil Dikonfirmasi",
+                message = "Pembayaran transaksi Anda berhasil diverifikasi. Berkas digital dan lisensi telah aktif di Download Center.",
+                type = NotificationType.TRANSAKSI,
+                actionRoute = AppScreen.MEMBER_CENTER,
+                actionLabel = "Buka Unduhan"
+            )
         }
     }
 
@@ -406,13 +558,135 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
 
     fun changeUserRole(user: UserEntity, newRole: UserRole) {
         viewModelScope.launch {
-            if (_currentUser.value.role != UserRole.SUPER_ADMIN) {
-                showNotification("Akses ditolak: Hanya Super Admin yang berhak memodifikasi Role pengguna!")
+            if (_currentUser.value.role != UserRole.SUPER_ADMIN && _currentUser.value.role != UserRole.ADMIN) {
+                showNotification("Akses ditolak: Hanya Admin / Super Admin yang berhak memodifikasi Role pengguna!")
                 return@launch
             }
             repository.updateUserRole(user.id, newRole.name, _currentUser.value.name, _currentUser.value.role.name)
             showNotification("Role ${user.name} berhasil diubah ke ${newRole.displayName}")
         }
+    }
+
+    fun createTeamMember(
+        name: String,
+        username: String,
+        email: String,
+        phone: String,
+        role: UserRole
+    ) {
+        viewModelScope.launch {
+            val actor = _currentUser.value
+            if (actor.role != UserRole.SUPER_ADMIN && actor.role != UserRole.ADMIN) {
+                showNotification("Akses ditolak: Hanya Admin / Super Admin yang dapat menambah anggota tim!")
+                return@launch
+            }
+            val res = repository.createTeamMember(
+                name = name,
+                username = username,
+                email = email,
+                phone = phone,
+                role = role,
+                actorName = actor.name,
+                actorRole = actor.role.name
+            )
+            res.onSuccess {
+                showNotification("Anggota tim ${it.name} (${role.displayName}) berhasil didaftarkan!")
+            }.onFailure {
+                showNotification("Gagal: ${it.message}")
+            }
+        }
+    }
+
+    fun deleteUser(user: UserEntity) {
+        viewModelScope.launch {
+            val actor = _currentUser.value
+            if (actor.role != UserRole.SUPER_ADMIN) {
+                showNotification("Akses ditolak: Hanya Super Admin yang berhak menghapus pengguna!")
+                return@launch
+            }
+            if (user.id == actor.id) {
+                showNotification("Tidak dapat menghapus akun Anda sendiri!")
+                return@launch
+            }
+            repository.deleteUser(user.id, actor.name, actor.role.name)
+            showNotification("Pengguna ${user.name} berhasil dihapus.")
+        }
+    }
+
+    fun toggleRoleFeature(role: UserRole, featureId: String) {
+        val currentRole = _currentUser.value.role
+        if (currentRole != UserRole.SUPER_ADMIN && currentRole != UserRole.ADMIN) {
+            showNotification("Akses ditolak: Hanya Admin / Super Admin yang berhak mengubah hak akses fitur role!")
+            return
+        }
+        val currentMap = rolePermissions.value.toMutableMap()
+        val roleSet = (currentMap[role] ?: emptySet()).toMutableSet()
+        val feature = systemFeatures.value.find { it.id == featureId }
+        val featureName = feature?.name ?: featureId
+
+        val isNowGranted = if (roleSet.contains(featureId)) {
+            roleSet.remove(featureId)
+            false
+        } else {
+            roleSet.add(featureId)
+            true
+        }
+        currentMap[role] = roleSet
+        rolePermissions.value = currentMap
+
+        showNotification(
+            if (isNowGranted) "Fitur '$featureName' berhasil DITAMBAHKAN ke role ${role.displayName}"
+            else "Fitur '$featureName' berhasil DIHAPUS dari role ${role.displayName}"
+        )
+    }
+
+    fun addNewCustomFeature(name: String, category: String, description: String, assignedRoles: List<UserRole>) {
+        val id = "FEAT_" + name.trim().uppercase().replace(" ", "_").take(20) + "_" + UUID.randomUUID().toString().take(4).uppercase()
+        val newFeature = RoleFeature(
+            id = id,
+            name = name,
+            category = category.ifBlank { "Kustom" },
+            description = description.ifBlank { "Fitur tambahan kustom" },
+            isCustom = true
+        )
+        systemFeatures.value = systemFeatures.value + newFeature
+
+        val currentMap = rolePermissions.value.toMutableMap()
+        assignedRoles.forEach { r ->
+            val set = (currentMap[r] ?: emptySet()).toMutableSet()
+            set.add(id)
+            currentMap[r] = set
+        }
+        val saSet = (currentMap[UserRole.SUPER_ADMIN] ?: emptySet()).toMutableSet()
+        saSet.add(id)
+        currentMap[UserRole.SUPER_ADMIN] = saSet
+
+        rolePermissions.value = currentMap
+        showNotification("Fitur kustom '$name' berhasil ditambahkan ke sistem!")
+    }
+
+    fun removeCustomFeature(featureId: String) {
+        val feature = systemFeatures.value.find { it.id == featureId }
+        systemFeatures.value = systemFeatures.value.filter { it.id != featureId }
+        val currentMap = rolePermissions.value.toMutableMap()
+        currentMap.keys.forEach { role ->
+            val set = (currentMap[role] ?: emptySet()).toMutableSet()
+            set.remove(featureId)
+            currentMap[role] = set
+        }
+        rolePermissions.value = currentMap
+        showNotification("Fitur '${feature?.name ?: featureId}' telah dihapus dari sistem.")
+    }
+
+    fun resetRolePermissionsToDefault() {
+        systemFeatures.value = RolePermissionDefaults.SYSTEM_FEATURES
+        rolePermissions.value = RolePermissionDefaults.getDefaultPermissions()
+        showNotification("Hak akses fitur seluruh role berhasil di-reset ke standar default.")
+    }
+
+    fun isFeatureAllowedForRole(role: UserRole, featureId: String): Boolean {
+        if (role == UserRole.SUPER_ADMIN) return true
+        return rolePermissions.value[role]?.contains(featureId) == true
     }
 
     fun addReview(productId: String, rating: Int, comment: String) {
@@ -441,5 +715,268 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
 
     fun clearNotification() {
         _userMessage.value = null
+    }
+
+    fun inspectProductIntegrity(product: ProductEntity) {
+        val result = SecurityManager.scanDigitalFile(product.downloadFileName, product.fileType, product.fileSize, product.id)
+        activeScanTargetName.value = product.title
+        activeScanResult.value = result
+        isIntegrityDialogOpen.value = true
+    }
+
+    fun inspectOrderItemIntegrity(orderItem: OrderItemEntity) {
+        val result = SecurityManager.scanDigitalFile(orderItem.downloadFileName, orderItem.fileType, orderItem.fileSize, orderItem.productId)
+        activeScanTargetName.value = orderItem.productTitle
+        activeScanResult.value = result
+        isIntegrityDialogOpen.value = true
+    }
+
+    fun closeIntegrityDialog() {
+        isIntegrityDialogOpen.value = false
+        activeScanResult.value = null
+        activeScanTargetName.value = ""
+    }
+
+    fun runSecuritySystemAudit() {
+        viewModelScope.launch {
+            isSystemScanning.value = true
+            repository.runSecuritySystemAudit(_currentUser.value.name, _currentUser.value.role.name)
+            isSystemScanning.value = false
+            systemScanCompleted.value = true
+            showNotification("Audit Menyeluruh Selesai: Seluruh berkas digital & proteksi akun 100% Bersih & Terenkripsi!")
+        }
+    }
+
+    // =========================================================================
+    // STORE CUSTOMIZATION & CMS MANAGEMENT METHODS
+    // =========================================================================
+
+    // 1. Slider / Banner Management
+    fun addBanner(title: String, subtitle: String, imageUrl: String, actionUrl: String, badge: String) {
+        val newBanner = BannerItem(
+            title = title,
+            subtitle = subtitle,
+            imageUrl = imageUrl.ifBlank { CustomizationPresets.BANNER_PRESETS.first().second },
+            actionUrl = actionUrl,
+            badge = badge.ifBlank { "PROMO" },
+            isActive = true,
+            sortOrder = (banners.value.maxOfOrNull { it.sortOrder } ?: 0) + 1
+        )
+        banners.value = banners.value + newBanner
+        showNotification("Banner '${newBanner.title}' berhasil ditambahkan ke slider!")
+    }
+
+    fun deleteBanner(bannerId: String) {
+        val banner = banners.value.find { it.id == bannerId }
+        banners.value = banners.value.filter { it.id != bannerId }
+        showNotification("Banner '${banner?.title ?: "Item"}' berhasil dihapus.")
+    }
+
+    fun toggleBannerStatus(bannerId: String) {
+        banners.value = banners.value.map {
+            if (it.id == bannerId) it.copy(isActive = !it.isActive) else it
+        }
+        val target = banners.value.find { it.id == bannerId }
+        showNotification("Status banner '${target?.title}' diubah: ${if (target?.isActive == true) "Aktif" else "Nonaktif"}")
+    }
+
+    // 2. Flash Sale Management
+    fun addFlashSale(title: String, discountPercent: Int, bannerUrl: String, endsAtText: String, targetCategory: String) {
+        val newFs = FlashSaleCampaign(
+            title = title,
+            discountPercent = discountPercent,
+            bannerUrl = bannerUrl.ifBlank { CustomizationPresets.BANNER_PRESETS[1].second },
+            endsAtText = endsAtText.ifBlank { "Berakhir dalam 24j : 00m : 00d" },
+            targetCategory = targetCategory.ifBlank { "Semua Produk" },
+            isActive = true
+        )
+        flashSales.value = flashSales.value + newFs
+        showNotification("Flash Sale promo '$title' berhasil dijadwalkan!")
+    }
+
+    fun deleteFlashSale(fsId: String) {
+        val fs = flashSales.value.find { it.id == fsId }
+        flashSales.value = flashSales.value.filter { it.id != fsId }
+        showNotification("Flash Sale promo '${fs?.title}' telah dihapus.")
+    }
+
+    fun toggleFlashSaleStatus(fsId: String) {
+        flashSales.value = flashSales.value.map {
+            if (it.id == fsId) it.copy(isActive = !it.isActive) else it
+        }
+        val target = flashSales.value.find { it.id == fsId }
+        showNotification("Status promo Flash Sale '${target?.title}': ${if (target?.isActive == true) "Aktif" else "Nonaktif"}")
+    }
+
+    // 3. Widget Management
+    fun addWidget(name: String, type: String, description: String, imageUrl: String) {
+        val newWidget = CustomWidget(
+            name = name,
+            type = type,
+            description = description,
+            imageUrl = imageUrl.ifBlank { CustomizationPresets.LOGO_PRESETS.first().second },
+            isActive = true,
+            sortOrder = (customWidgets.value.maxOfOrNull { it.sortOrder } ?: 0) + 1
+        )
+        customWidgets.value = customWidgets.value + newWidget
+        showNotification("Widget '$name' berhasil ditambahkan ke tata letak!")
+    }
+
+    fun deleteWidget(widgetId: String) {
+        val wgt = customWidgets.value.find { it.id == widgetId }
+        customWidgets.value = customWidgets.value.filter { it.id != widgetId }
+        showNotification("Widget '${wgt?.name}' berhasil dihapus.")
+    }
+
+    fun toggleWidgetStatus(widgetId: String) {
+        customWidgets.value = customWidgets.value.map {
+            if (it.id == widgetId) it.copy(isActive = !it.isActive) else it
+        }
+        val target = customWidgets.value.find { it.id == widgetId }
+        showNotification("Widget '${target?.name}': ${if (target?.isActive == true) "Ditampilkan" else "Disembunyikan"}")
+    }
+
+    // 4. Static Page Management
+    fun addStaticPage(title: String, slug: String, summary: String, content: String) {
+        val cleanSlug = slug.ifBlank { title.lowercase().replace(" ", "-").replace(Regex("[^a-z0-9-]"), "") }
+        val newPage = StaticPage(
+            title = title,
+            slug = cleanSlug,
+            summary = summary,
+            content = content,
+            isPublished = true
+        )
+        staticPages.value = staticPages.value + newPage
+        showNotification("Halaman statis '${newPage.title}' berhasil diterbitkan!")
+    }
+
+    fun updateStaticPage(pageId: String, title: String, slug: String, summary: String, content: String, isPublished: Boolean) {
+        staticPages.value = staticPages.value.map {
+            if (it.id == pageId) {
+                it.copy(
+                    title = title,
+                    slug = slug,
+                    summary = summary,
+                    content = content,
+                    isPublished = isPublished,
+                    lastUpdated = "16 Sep 2026"
+                )
+            } else it
+        }
+        showNotification("Halaman '$title' berhasil diperbarui!")
+    }
+
+    fun deleteStaticPage(pageId: String) {
+        val page = staticPages.value.find { it.id == pageId }
+        staticPages.value = staticPages.value.filter { it.id != pageId }
+        showNotification("Halaman '${page?.title}' berhasil dihapus.")
+    }
+
+    // 5. Blog Post Management
+    fun addBlogPost(title: String, category: String, author: String, coverImageUrl: String, excerpt: String, content: String) {
+        val newPost = BlogPost(
+            title = title,
+            category = category.ifBlank { "Teknologi" },
+            author = author.ifBlank { _currentUser.value.name },
+            coverImageUrl = coverImageUrl.ifBlank { CustomizationPresets.BANNER_PRESETS.first().second },
+            excerpt = excerpt,
+            content = content,
+            isPublished = true
+        )
+        blogPosts.value = blogPosts.value + newPost
+        showNotification("Artikel '${newPost.title}' berhasil dipublikasikan!")
+    }
+
+    fun deleteBlogPost(postId: String) {
+        val post = blogPosts.value.find { it.id == postId }
+        blogPosts.value = blogPosts.value.filter { it.id != postId }
+        showNotification("Artikel '${post?.title}' telah dihapus.")
+    }
+
+    fun toggleBlogPostPublish(postId: String) {
+        blogPosts.value = blogPosts.value.map {
+            if (it.id == postId) it.copy(isPublished = !it.isPublished) else it
+        }
+        val target = blogPosts.value.find { it.id == postId }
+        showNotification("Status artikel '${target?.title}': ${if (target?.isPublished == true) "Published" else "Draft"}")
+    }
+
+    // 6. SEO & Pixel Settings
+    fun updateSeoSettings(newSettings: SeoPixelSettings) {
+        seoSettings.value = newSettings
+        showNotification("Konfigurasi SEO & Pixel Tracking berhasil disimpan!")
+    }
+
+    // 7. PWA Settings
+    fun updatePwaSettings(newSettings: PwaSettings) {
+        pwaSettings.value = newSettings
+        showNotification("Pengaturan Progressive Web App (PWA) berhasil disimpan!")
+    }
+
+    // 8. General Configuration
+    fun updateGeneralConfig(newConfig: GeneralStoreConfig) {
+        generalConfig.value = newConfig
+        showNotification("Konfigurasi Umum Toko & Branding berhasil diperbarui!")
+    }
+
+    // --- NOTIFICATION MANAGEMENT ---
+    fun markNotificationAsRead(id: String) {
+        notifications.value = notifications.value.map {
+            if (it.id == id) it.copy(isRead = true) else it
+        }
+    }
+
+    fun markAllNotificationsAsRead() {
+        notifications.value = notifications.value.map { it.copy(isRead = true) }
+        showNotification("Semua notifikasi telah ditandai dibaca.")
+    }
+
+    fun deleteNotification(id: String) {
+        notifications.value = notifications.value.filterNot { it.id == id }
+        showNotification("Notifikasi berhasil dihapus.")
+    }
+
+    fun clearAllNotifications() {
+        notifications.value = emptyList()
+        showNotification("Seluruh riwayat notifikasi telah dibersihkan.")
+    }
+
+    fun addNotification(
+        title: String,
+        message: String,
+        type: NotificationType,
+        actionRoute: AppScreen? = null,
+        actionLabel: String? = null,
+        targetRole: String = "ALL"
+    ) {
+        val newNotif = NotificationItem(
+            id = "notif_${UUID.randomUUID().toString().take(8)}",
+            title = title,
+            message = message,
+            type = type,
+            timestamp = "Baru saja",
+            isRead = false,
+            actionRoute = actionRoute,
+            actionLabel = actionLabel,
+            targetRole = targetRole
+        )
+        notifications.value = listOf(newNotif) + notifications.value
+    }
+
+    fun broadcastNotification(
+        title: String,
+        message: String,
+        type: NotificationType,
+        targetRole: String = "ALL"
+    ) {
+        addNotification(
+            title = title,
+            message = message,
+            type = type,
+            actionRoute = if (type == NotificationType.PROMO) AppScreen.CATALOG else AppScreen.HOME,
+            actionLabel = if (type == NotificationType.PROMO) "Lihat Promo" else "Buka Aplikasi",
+            targetRole = targetRole
+        )
+        showNotification("Broadcast notifikasi '$title' berhasil dikirim ke $targetRole!")
     }
 }

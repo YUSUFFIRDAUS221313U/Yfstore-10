@@ -29,11 +29,16 @@ import com.example.ui.MarketplaceViewModel
 import com.example.ui.components.FileTypeBadge
 import com.example.ui.components.RoleBadge
 import com.example.ui.components.formatRupiah
+import com.example.ui.components.YfShieldBadge
+import com.example.ui.components.FileIntegrityScanDialog
+import com.example.ui.components.AccountSecurityCard
+import com.example.ui.components.RoleAdaptiveDashboard
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 enum class MemberTab(val title: String) {
+    DASHBOARD("Dashboard"),
     DOWNLOADS("Download Center"),
     ORDERS("Riwayat Order"),
     WISHLIST("Wishlist"),
@@ -51,13 +56,19 @@ fun MemberCenterScreen(
     val orders by viewModel.userOrders.collectAsState()
     val wishlist by viewModel.userWishlist.collectAsState()
     val allProducts by viewModel.allProducts.collectAsState()
+    val allOrders by viewModel.allOrders.collectAsState()
+    val allUsers by viewModel.allUsers.collectAsState()
 
     val clipboardManager: ClipboardManager = LocalClipboardManager.current
-    var selectedTab by remember { mutableStateOf(MemberTab.DOWNLOADS) }
+    var selectedTab by remember { mutableStateOf(MemberTab.DASHBOARD) }
 
     val wishlistedProducts = remember(wishlist, allProducts) {
         wishlist.mapNotNull { w -> allProducts.find { it.id == w.productId } }
     }
+
+    val isIntegrityDialogOpen by viewModel.isIntegrityDialogOpen.collectAsState()
+    val activeScanResult by viewModel.activeScanResult.collectAsState()
+    val activeScanTargetName by viewModel.activeScanTargetName.collectAsState()
 
     Column(
         modifier = modifier
@@ -99,14 +110,38 @@ fun MemberCenterScreen(
                                 fontSize = 16.sp
                             )
                             Text(
-                                text = currentUser.email.ifBlank { "Akun Pengunjung" },
+                                text = if (currentUser.role == UserRole.GUEST) "Akun Pengunjung (Belum Login)" else "@${currentUser.username} • ${currentUser.email}",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
 
-                    RoleBadge(role = currentUser.role)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val unreadNotifs by viewModel.unreadNotificationCount.collectAsState()
+                        IconButton(
+                            onClick = { viewModel.navigateTo(AppScreen.NOTIFICATIONS) },
+                            modifier = Modifier.testTag("member_notification_btn")
+                        ) {
+                            BadgedBox(
+                                badge = {
+                                    if (unreadNotifs > 0) {
+                                        Badge(containerColor = BrandRose) {
+                                            Text("$unreadNotifs", fontSize = 9.sp)
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = if (unreadNotifs > 0) Icons.Filled.Notifications else Icons.Outlined.Notifications,
+                                    contentDescription = "Pusat Notifikasi",
+                                    tint = if (unreadNotifs > 0) BrandIndigo else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        RoleBadge(role = currentUser.role)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -137,6 +172,37 @@ fun MemberCenterScreen(
 
         // Tab Content
         when (selectedTab) {
+            MemberTab.DASHBOARD -> {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag("dashboard_tab_content"),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    item {
+                        RoleAdaptiveDashboard(
+                            currentUser = currentUser,
+                            allOrders = allOrders,
+                            allProducts = allProducts,
+                            purchasedDownloads = purchasedItems,
+                            userOrders = orders,
+                            wishlistCount = wishlist.size,
+                            registeredUsersCount = allUsers.size,
+                            onNavigateToProducts = { viewModel.navigateTo(AppScreen.CATALOG) },
+                            onNavigateToOrders = { selectedTab = MemberTab.ORDERS },
+                            onNavigateToDownloads = { selectedTab = MemberTab.DOWNLOADS },
+                            onNavigateToWishlist = { selectedTab = MemberTab.WISHLIST },
+                            onNavigateToAdminTab = { tab ->
+                                viewModel.adminTab.value = tab
+                                viewModel.navigateTo(AppScreen.ADMIN_PANEL)
+                            },
+                            onSwitchRole = { role -> viewModel.switchRole(role) },
+                            onDownloadItem = { item -> viewModel.simulateDownload(item) }
+                        )
+                    }
+                }
+            }
             MemberTab.DOWNLOADS -> {
                 if (purchasedItems.isEmpty()) {
                     Box(
@@ -203,6 +269,9 @@ fun MemberCenterScreen(
                                 onCopyLicense = {
                                     clipboardManager.setText(AnnotatedString(item.licenseKey))
                                     viewModel.showNotification("Kunci lisensi '${item.licenseKey}' disalin!")
+                                },
+                                onInspectSecurity = {
+                                    viewModel.inspectOrderItemIntegrity(item)
                                 }
                             )
                         }
@@ -363,10 +432,58 @@ fun MemberCenterScreen(
                                 Text("Data Akun Pengguna", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 Spacer(modifier = Modifier.height(10.dp))
                                 ProfileInfoRow(label = "Nama Lengkap", value = currentUser.name)
+                                ProfileInfoRow(label = "Username", value = "@${currentUser.username}")
                                 ProfileInfoRow(label = "Email", value = currentUser.email.ifBlank { "Tidak terdaftar" })
                                 ProfileInfoRow(label = "Nomor Telepon", value = currentUser.phone.ifBlank { "-" })
                                 ProfileInfoRow(label = "Tingkat Role", value = currentUser.role.displayName)
-                                ProfileInfoRow(label = "Status Akun", value = "Aktif (Terverifikasi)")
+                                ProfileInfoRow(label = "Status Akun", value = if (currentUser.role == UserRole.GUEST) "Belum Login" else "Aktif (Terverifikasi)")
+                            }
+                        }
+                    }
+
+                    if (currentUser.role == UserRole.GUEST) {
+                        item {
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = BrandIndigo.copy(alpha = 0.08f)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, BrandIndigo.copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text("Sudah Punya Akun?", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = BrandIndigo)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Masuk atau buat akun baru untuk menyimpan produk yang Anda beli, akses lisensi selamanya, dan gunakan kupon promo.",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = { viewModel.openAuth(0) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = BrandIndigo),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Masuk", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = { viewModel.openAuth(1) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Daftar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -387,21 +504,62 @@ fun MemberCenterScreen(
                         }
                     }
 
+                    // Account Security & Antivirus Protection Card
                     item {
-                        OutlinedButton(
-                            onClick = { viewModel.switchRole(UserRole.GUEST) },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandRose),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Logout (Beralih ke Tamu / Guest)")
+                        AccountSecurityCard(
+                            onInspectClick = {
+                                val firstItem = purchasedItems.firstOrNull()
+                                if (firstItem != null) {
+                                    viewModel.inspectOrderItemIntegrity(firstItem)
+                                } else {
+                                    val dummyProd = allProducts.firstOrNull()
+                                    if (dummyProd != null) {
+                                        viewModel.inspectProductIntegrity(dummyProd)
+                                    } else {
+                                        viewModel.runSecuritySystemAudit()
+                                    }
+                                }
+                            }
+                        )
+                    }
+
+                    item {
+                        if (currentUser.role != UserRole.GUEST) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = { viewModel.openAuth(0) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.SwitchAccount, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Ganti Akun Lain")
+                                }
+
+                                Button(
+                                    onClick = { viewModel.logout() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandRose),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Logout / Keluar Akun")
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    if (isIntegrityDialogOpen) {
+        FileIntegrityScanDialog(
+            targetName = activeScanTargetName,
+            scanResult = activeScanResult,
+            onDismiss = { viewModel.closeIntegrityDialog() }
+        )
     }
 }
 
@@ -409,7 +567,8 @@ fun MemberCenterScreen(
 fun DownloadItemCard(
     item: OrderItemEntity,
     onDownload: () -> Unit,
-    onCopyLicense: () -> Unit
+    onCopyLicense: () -> Unit,
+    onInspectSecurity: () -> Unit = {}
 ) {
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -435,6 +594,26 @@ fun DownloadItemCard(
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // YF-Shield Integrity & Anti-Virus Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                YfShieldBadge(compact = true, onClick = onInspectSecurity)
+                TextButton(
+                    onClick = onInspectSecurity,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color(0xFF047857))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Cek SHA-256", fontSize = 10.sp, color = Color(0xFF047857), fontWeight = FontWeight.Bold)
                 }
             }
 

@@ -8,8 +8,12 @@ import com.example.data.model.UserRole
 data class UserEntity(
     @PrimaryKey val id: String,
     val name: String,
+    val username: String = "",
     val email: String,
     val phone: String,
+    val password: String = "123456",
+    val salt: String = "",
+    val passwordHash: String = "",
     val role: String, // Stored as enum name
     val isActive: Boolean = true,
     val createdAt: Long = System.currentTimeMillis()
@@ -32,6 +36,8 @@ data class ProductEntity(
     val salesCount: Int = 34,
     val isFeatured: Boolean = true,
     val isActive: Boolean = true,
+    val sha256Checksum: String = "",
+    val malwareStatus: String = "VERIFIED_CLEAN", // "VERIFIED_CLEAN", "SCANNED_SAFE"
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -74,7 +80,9 @@ data class OrderItemEntity(
     val downloadCount: Int = 0,
     val maxDownloads: Int = 999,
     val licenseKey: String,
-    val expiryDays: Int = 0 // 0 = Lifetime
+    val expiryDays: Int = 0, // 0 = Lifetime
+    val sha256Checksum: String = "",
+    val securityStatus: String = "VERIFIED_CLEAN"
 )
 
 @Entity(tableName = "coupons")

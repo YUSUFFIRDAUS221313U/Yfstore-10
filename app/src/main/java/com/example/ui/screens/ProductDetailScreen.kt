@@ -28,6 +28,8 @@ import com.example.ui.MarketplaceViewModel
 import com.example.ui.components.FileTypeBadge
 import com.example.ui.components.formatRupiah
 import com.example.ui.components.getCategoryVector
+import com.example.ui.components.YfShieldBadge
+import com.example.ui.components.FileIntegrityScanDialog
 import com.example.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,6 +48,10 @@ fun ProductDetailScreen(
     var showReviewDialog by remember { mutableStateOf(false) }
     var reviewRating by remember { mutableStateOf(5) }
     var reviewComment by remember { mutableStateOf("") }
+
+    val isIntegrityDialogOpen by viewModel.isIntegrityDialogOpen.collectAsState()
+    val activeScanResult by viewModel.activeScanResult.collectAsState()
+    val activeScanTargetName by viewModel.activeScanTargetName.collectAsState()
 
     Scaffold(
         topBar = {
@@ -317,6 +323,26 @@ fun ProductDetailScreen(
                                 fontWeight = FontWeight.Medium
                             )
                         }
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            YfShieldBadge(
+                                compact = false,
+                                onClick = { viewModel.inspectProductIntegrity(product) }
+                            )
+                            TextButton(
+                                onClick = { viewModel.inspectProductIntegrity(product) }
+                            ) {
+                                Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF047857))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Cek Integritas", fontSize = 11.sp, color = Color(0xFF047857), fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }
@@ -448,6 +474,14 @@ fun ProductDetailScreen(
                     Text("Batal")
                 }
             }
+        )
+    }
+
+    if (isIntegrityDialogOpen) {
+        FileIntegrityScanDialog(
+            targetName = activeScanTargetName,
+            scanResult = activeScanResult,
+            onDismiss = { viewModel.closeIntegrityDialog() }
         )
     }
 }

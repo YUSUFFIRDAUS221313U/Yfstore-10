@@ -41,6 +41,7 @@ import com.example.ui.components.RoleBadge
 import com.example.ui.components.formatRupiah
 import com.example.ui.components.getCategoryVector
 import com.example.ui.theme.*
+import coil.compose.AsyncImage
 
 @Composable
 fun HomeScreen(
@@ -52,6 +53,9 @@ fun HomeScreen(
     val cartItems by viewModel.userCartItems.collectAsState()
     val wishlist by viewModel.userWishlist.collectAsState()
     val wishlistedIds = remember(wishlist) { wishlist.map { it.productId }.toSet() }
+    val banners by viewModel.banners.collectAsState()
+    val activeBanners = remember(banners) { banners.filter { it.isActive } }
+    val unreadNotifCount by viewModel.unreadNotificationCount.collectAsState()
 
     var roleSelectorExpanded by remember { mutableStateOf(false) }
 
@@ -82,65 +86,121 @@ fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(BrandIndigo, BrandCyan)
-                                        )
-                                    ),
-                                contentAlignment = Alignment.Center
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFF0C0F14),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, BrandCrimson.copy(alpha = 0.35f)),
+                                shadowElevation = 3.dp,
+                                modifier = Modifier.size(42.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.CloudDownload,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(24.dp)
+                                Image(
+                                    painter = painterResource(id = R.drawable.yf_logo),
+                                    contentDescription = "YF STORE Logo",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(3.dp)
                                 )
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = "DigiMarket",
+                                    text = "YF STORE",
                                     fontWeight = FontWeight.Black,
-                                    fontSize = 18.sp,
-                                    color = BrandIndigo
+                                    fontSize = 17.sp,
+                                    letterSpacing = 0.5.sp,
+                                    color = BrandCrimson
                                 )
                                 Text(
-                                    text = "Digital Products & Instant Delivery",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = "YUSUF FIRDAUS",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 9.sp,
+                                    letterSpacing = 1.5.sp,
+                                    color = BrandCharcoal
                                 )
                             }
                         }
 
-                        // Cart badge
-                        IconButton(
-                            onClick = { viewModel.navigateTo(AppScreen.CART_CHECKOUT) },
-                            modifier = Modifier.testTag("home_cart_button")
-                        ) {
-                            BadgedBox(
-                                badge = {
-                                    if (cartItems.isNotEmpty()) {
-                                        Badge(containerColor = BrandRose) {
-                                            Text("${cartItems.size}")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (currentUser.role == UserRole.GUEST) {
+                                Button(
+                                    onClick = { viewModel.openAuth(0) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandIndigo),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier
+                                        .height(34.dp)
+                                        .testTag("top_login_btn")
+                                ) {
+                                    Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Masuk", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                            } else {
+                                IconButton(
+                                    onClick = { viewModel.openAuth(0) },
+                                    modifier = Modifier.testTag("top_auth_switch_btn")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SwitchAccount,
+                                        contentDescription = "Ganti Akun",
+                                        tint = BrandIndigo
+                                    )
+                                }
+                            }
+
+                            // Notification bell badge
+                            IconButton(
+                                onClick = { viewModel.navigateTo(AppScreen.NOTIFICATIONS) },
+                                modifier = Modifier.testTag("home_notification_button")
+                            ) {
+                                BadgedBox(
+                                    badge = {
+                                        if (unreadNotifCount > 0) {
+                                            Badge(containerColor = BrandRose) {
+                                                Text(
+                                                    text = if (unreadNotifCount > 9) "9+" else "$unreadNotifCount",
+                                                    fontSize = 9.sp
+                                                )
+                                            }
                                         }
                                     }
+                                ) {
+                                    Icon(
+                                        imageVector = if (unreadNotifCount > 0) Icons.Filled.Notifications else Icons.Outlined.Notifications,
+                                        contentDescription = "Pusat Notifikasi",
+                                        tint = if (unreadNotifCount > 0) BrandIndigo else MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
+                            }
+
+                            // Cart badge
+                            IconButton(
+                                onClick = { viewModel.navigateTo(AppScreen.CART_CHECKOUT) },
+                                modifier = Modifier.testTag("home_cart_button")
                             ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.ShoppingCart,
-                                    contentDescription = "Keranjang"
-                                )
+                                BadgedBox(
+                                    badge = {
+                                        if (cartItems.isNotEmpty()) {
+                                            Badge(containerColor = BrandRose) {
+                                                Text("${cartItems.size}")
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.ShoppingCart,
+                                        contentDescription = "Keranjang"
+                                    )
+                                }
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Role Switcher Strip for PRD Testing
+                    // Role & User Account Strip
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
@@ -161,7 +221,7 @@ fun HomeScreen(
                                     imageVector = Icons.Default.AccountCircle,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
@@ -177,7 +237,7 @@ fun HomeScreen(
                                         RoleBadge(role = currentUser.role)
                                     }
                                     Text(
-                                        text = currentUser.role.description,
+                                        text = if (currentUser.role == UserRole.GUEST) "Belum login • Mode Tamu" else "@${currentUser.username} • ${currentUser.email}",
                                         fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
@@ -186,18 +246,48 @@ fun HomeScreen(
                                 }
                             }
 
-                            FilledTonalButton(
-                                onClick = { roleSelectorExpanded = true },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.testTag("switch_role_btn")
-                            ) {
-                                Text("Ganti Role", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (currentUser.role == UserRole.GUEST) {
+                                    FilledTonalButton(
+                                        onClick = { viewModel.openAuth(1) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier
+                                            .height(30.dp)
+                                            .testTag("home_register_btn")
+                                    ) {
+                                        Text("Daftar", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                } else {
+                                    OutlinedButton(
+                                        onClick = { viewModel.logout() },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier
+                                            .height(30.dp)
+                                            .testTag("home_logout_btn")
+                                    ) {
+                                        Text("Keluar", fontSize = 10.sp, color = BrandRose)
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+
+                                FilledTonalButton(
+                                    onClick = { roleSelectorExpanded = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier
+                                        .height(30.dp)
+                                        .testTag("switch_role_btn")
+                                ) {
+                                    Text("Role", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -249,68 +339,145 @@ fun HomeScreen(
             }
         }
 
-        // --- HERO BANNER ---
+        // --- HERO BANNER (CUSTOMIZABLE SLIDER) ---
         item {
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Box(
+            if (activeBanners.isNotEmpty()) {
+                LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp)
+                        .padding(vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.hero_banner_market),
-                        contentDescription = "Digital Marketplace Banner",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    items(activeBanners, key = { it.id }) { banner ->
+                        Card(
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+                            modifier = Modifier
+                                .fillParentMaxWidth(if (activeBanners.size > 1) 0.92f else 1.0f)
+                                .height(180.dp)
+                                .testTag("home_banner_${banner.id}")
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                AsyncImage(
+                                    model = banner.imageUrl,
+                                    contentDescription = banner.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
 
-                    // Gradient overlay
+                                // Gradient overlay
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.verticalGradient(
+                                                colors = listOf(Color.Transparent, Color(0xEE0B0F19))
+                                            )
+                                        )
+                                )
+
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(16.dp)
+                                ) {
+                                    Surface(
+                                        color = BrandCrimson,
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "⚡ ${banner.badge}",
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Black,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = banner.title,
+                                        color = Color.White,
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = banner.subtitle,
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        fontSize = 11.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(Color.Transparent, Color(0xDD0B0F19))
-                                )
-                            )
-                    )
-
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(16.dp)
+                            .fillMaxWidth()
+                            .height(180.dp)
                     ) {
-                        Surface(
-                            color = BrandEmerald,
-                            shape = RoundedCornerShape(4.dp)
+                        Image(
+                            painter = painterResource(id = R.drawable.hero_banner_market),
+                            contentDescription = "Digital Marketplace Banner",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        // Gradient overlay
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(Color.Transparent, Color(0xDD0B0F19))
+                                    )
+                                )
+                        )
+
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(16.dp)
                         ) {
+                            Surface(
+                                color = BrandEmerald,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "⚡ INSTANT DELIVERY",
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "⚡ INSTANT DELIVERY",
+                                text = "Kebutuhan Digital Siap Pakai",
                                 color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Source Code, E-Book, Course, UI Kit & Voucher Digital",
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 11.sp
                             )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Kebutuhan Digital Siap Pakai",
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Source Code, E-Book, Course, UI Kit & Voucher Digital",
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 11.sp
-                        )
                     }
                 }
             }

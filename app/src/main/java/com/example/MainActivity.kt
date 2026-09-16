@@ -73,11 +73,13 @@ fun MainAppScreen(viewModel: MarketplaceViewModel) {
     BackHandler(enabled = currentScreen != AppScreen.HOME) {
         when (currentScreen) {
             AppScreen.PRODUCT_DETAIL -> viewModel.navigateTo(AppScreen.CATALOG)
+            AppScreen.AUTH,
             AppScreen.CART_CHECKOUT,
             AppScreen.CATALOG,
             AppScreen.MEMBER_CENTER,
             AppScreen.ADMIN_PANEL,
-            AppScreen.FAQ_CONTACT -> viewModel.navigateTo(AppScreen.HOME)
+            AppScreen.FAQ_CONTACT,
+            AppScreen.NOTIFICATIONS -> viewModel.navigateTo(AppScreen.HOME)
             AppScreen.HOME -> { /* Exit */ }
         }
     }
@@ -127,8 +129,8 @@ fun MainAppScreen(viewModel: MarketplaceViewModel) {
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         bottomBar = {
-            // Hide bottom bar on product detail and cart for distraction-free view
-            if (currentScreen != AppScreen.PRODUCT_DETAIL && currentScreen != AppScreen.CART_CHECKOUT) {
+            // Hide bottom bar on product detail, cart, and auth for distraction-free view
+            if (currentScreen != AppScreen.PRODUCT_DETAIL && currentScreen != AppScreen.CART_CHECKOUT && currentScreen != AppScreen.AUTH) {
                 NavigationBar(
                     tonalElevation = 8.dp,
                     modifier = Modifier.testTag("bottom_nav_bar")
@@ -195,6 +197,8 @@ fun MainAppScreen(viewModel: MarketplaceViewModel) {
                     }
                 }
                 AppScreen.FAQ_CONTACT -> FaqContactScreen(viewModel = viewModel)
+                AppScreen.AUTH -> AuthScreen(viewModel = viewModel)
+                AppScreen.NOTIFICATIONS -> NotificationCenterScreen(viewModel = viewModel)
             }
         }
     }

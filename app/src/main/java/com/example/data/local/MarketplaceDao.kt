@@ -17,6 +17,9 @@ interface MarketplaceDao {
     @Query("SELECT * FROM products WHERE isActive = 1 ORDER BY isFeatured DESC, salesCount DESC")
     fun getActiveProducts(): Flow<List<ProductEntity>>
 
+    @Query("SELECT * FROM products")
+    suspend fun getAllProductsList(): List<ProductEntity>
+
     @Query("SELECT * FROM products WHERE id = :productId LIMIT 1")
     suspend fun getProductById(productId: String): ProductEntity?
 
@@ -92,8 +95,14 @@ interface MarketplaceDao {
     @Query("SELECT * FROM users WHERE id = :userId LIMIT 1")
     suspend fun getUserById(userId: String): UserEntity?
 
-    @Query("SELECT * FROM users WHERE email = :email LIMIT 1")
+    @Query("SELECT * FROM users WHERE LOWER(email) = LOWER(:email) LIMIT 1")
     suspend fun getUserByEmail(email: String): UserEntity?
+
+    @Query("SELECT * FROM users WHERE LOWER(username) = LOWER(:username) LIMIT 1")
+    suspend fun getUserByUsername(username: String): UserEntity?
+
+    @Query("SELECT * FROM users WHERE LOWER(username) = LOWER(:identifier) OR LOWER(email) = LOWER(:identifier) LIMIT 1")
+    suspend fun getUserByUsernameOrEmail(identifier: String): UserEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertUser(user: UserEntity)
@@ -106,6 +115,9 @@ interface MarketplaceDao {
 
     @Query("UPDATE users SET role = :role WHERE id = :userId")
     suspend fun updateUserRole(userId: String, role: String)
+
+    @Query("DELETE FROM users WHERE id = :userId")
+    suspend fun deleteUserById(userId: String)
 
     // --- COUPONS ---
     @Query("SELECT * FROM coupons ORDER BY discountPercent DESC")

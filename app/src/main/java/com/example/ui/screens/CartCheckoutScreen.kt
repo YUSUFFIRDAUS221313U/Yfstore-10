@@ -277,6 +277,30 @@ fun CartCheckoutScreen(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             if (currentUser.role == UserRole.GUEST) {
+                                Surface(
+                                    color = BrandIndigo.copy(alpha = 0.08f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Sudah punya akun? Masuk untuk simpan riwayat:",
+                                            fontSize = 10.sp,
+                                            color = BrandIndigo
+                                        )
+                                        TextButton(
+                                            onClick = { viewModel.openAuth(0) },
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("Masuk", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BrandIndigo)
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Text(
                                     text = "Email ini akan digunakan untuk mengirimkan link download token & invoice digital:",
                                     fontSize = 11.sp,
@@ -308,7 +332,7 @@ fun CartCheckoutScreen(
                                 )
                             } else {
                                 Text(
-                                    text = "Penerima: ${currentUser.name}",
+                                    text = "Penerima: ${currentUser.name} (@${currentUser.username})",
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 13.sp
                                 )

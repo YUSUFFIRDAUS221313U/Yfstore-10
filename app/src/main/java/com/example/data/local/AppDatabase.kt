@@ -17,7 +17,7 @@ import androidx.room.RoomDatabase
         ReviewEntity::class,
         AuditLogEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

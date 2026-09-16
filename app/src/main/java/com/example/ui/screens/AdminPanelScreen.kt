@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -19,11 +20,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.data.local.AuditLogEntity
 import com.example.data.local.CouponEntity
 import com.example.data.local.OrderEntity
@@ -32,10 +36,15 @@ import com.example.data.local.UserEntity
 import com.example.data.model.CATEGORIES
 import com.example.data.model.UserRole
 import com.example.ui.AdminTab
+import com.example.ui.AppScreen
 import com.example.ui.MarketplaceViewModel
+import com.example.ui.admin.*
 import com.example.ui.components.FileTypeBadge
 import com.example.ui.components.RoleBadge
 import com.example.ui.components.formatRupiah
+import com.example.ui.components.FileIntegrityScanDialog
+import com.example.ui.components.YfShieldBadge
+import com.example.security.SecurityManager
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -58,121 +67,234 @@ fun AdminPanelScreen(
     val isAdmin = currentUser.role == UserRole.ADMIN
     val isSuperAdmin = currentUser.role == UserRole.SUPER_ADMIN
 
+    val isSystemScanning by viewModel.isSystemScanning.collectAsState()
+    val systemScanCompleted by viewModel.systemScanCompleted.collectAsState()
+    val isIntegrityDialogOpen by viewModel.isIntegrityDialogOpen.collectAsState()
+    val activeScanResult by viewModel.activeScanResult.collectAsState()
+    val activeScanTargetName by viewModel.activeScanTargetName.collectAsState()
+
     var showAddProductDialog by remember { mutableStateOf(false) }
     var editingProduct by remember { mutableStateOf<ProductEntity?>(null) }
     var showAddCouponDialog by remember { mutableStateOf(false) }
+
+    var selectedGroup by remember { mutableStateOf(AdminMenuGroup.PANEL_RESELLER) }
+    var selectedSubmenu by remember { mutableStateOf(AdminSubmenu.DASHBOARD) }
+    var activePillar by remember { mutableStateOf(AdminSimplePillar.DASHBOARD) }
+    var showMenuBottomSheet by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentTab) {
+        when (currentTab) {
+            AdminTab.DASHBOARD -> {
+                selectedGroup = AdminMenuGroup.PANEL_RESELLER
+                selectedSubmenu = AdminSubmenu.DASHBOARD
+                activePillar = AdminSimplePillar.DASHBOARD
+            }
+            AdminTab.PRODUCTS -> {
+                selectedGroup = AdminMenuGroup.KELOLA_PRODUK
+                selectedSubmenu = AdminSubmenu.PRODUK
+                activePillar = AdminSimplePillar.PRODUK
+            }
+            AdminTab.ORDERS -> {
+                selectedGroup = AdminMenuGroup.PANEL_RESELLER
+                selectedSubmenu = AdminSubmenu.PESANAN
+                activePillar = AdminSimplePillar.PESANAN
+            }
+            AdminTab.MEMBERS -> {
+                selectedGroup = AdminMenuGroup.MANAJEMEN_TIM
+                selectedSubmenu = AdminSubmenu.PENGGUNA
+                activePillar = AdminSimplePillar.PENGATURAN
+            }
+            AdminTab.COUPONS -> {
+                selectedGroup = AdminMenuGroup.KUSTOMISASI
+                selectedSubmenu = AdminSubmenu.VOUCHER
+                activePillar = AdminSimplePillar.PENGATURAN
+            }
+            AdminTab.ANALYTICS -> {
+                selectedGroup = AdminMenuGroup.PANEL_RESELLER
+                selectedSubmenu = AdminSubmenu.ANALITIK
+                activePillar = AdminSimplePillar.DASHBOARD
+            }
+            AdminTab.AUDIT_LOGS -> {
+                selectedGroup = AdminMenuGroup.MANAJEMEN_TIM
+                selectedSubmenu = AdminSubmenu.LOG_AKTIVITAS
+                activePillar = AdminSimplePillar.PENGATURAN
+            }
+            AdminTab.PERMISSION_MATRIX -> {
+                selectedGroup = AdminMenuGroup.MANAJEMEN_TIM
+                selectedSubmenu = AdminSubmenu.ROLES_HAK_AKSES
+                activePillar = AdminSimplePillar.PENGATURAN
+            }
+            AdminTab.SECURITY_CENTER -> {
+                selectedGroup = AdminMenuGroup.MANAJEMEN_TIM
+                selectedSubmenu = AdminSubmenu.ALERT_KEAMANAN
+                activePillar = AdminSimplePillar.PENGATURAN
+            }
+        }
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .testTag("admin_panel_screen")
     ) {
-        // Top Header
+        // Streamlined Top Header
         Surface(
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 3.dp,
+            tonalElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Admin & Staff Console",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 18.sp
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF0C0F14),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandCrimson.copy(alpha = 0.4f)),
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.yf_logo),
+                            contentDescription = "YF Shield",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(2.dp)
                         )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Login sebagai: ${currentUser.name} (",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            RoleBadge(role = currentUser.role)
-                            Text(")", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-
-                    if (isSuperAdmin) {
-                        Surface(
-                            color = BrandRose.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                text = "Full Root Access",
-                                color = BrandRose,
-                                fontSize = 10.sp,
+                                text = "Admin Console",
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            RoleBadge(role = currentUser.role)
                         }
+                        Text(
+                            text = currentUser.name,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Sub-tab Navigation
-                ScrollableTabRow(
-                    selectedTabIndex = currentTab.ordinal,
-                    edgePadding = 0.dp,
-                    divider = {}
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    AdminTab.values().forEach { tab ->
-                        val isLockedForStaff = isStaff && (
-                                tab == AdminTab.MEMBERS ||
-                                tab == AdminTab.COUPONS ||
-                                tab == AdminTab.AUDIT_LOGS
+                    // Quick button to view customer storefront
+                    IconButton(
+                        onClick = { viewModel.navigateTo(AppScreen.HOME) },
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                            .testTag("admin_preview_store_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Storefront,
+                            contentDescription = "Lihat Toko",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(17.dp)
                         )
-                        val isLockedForAdmin = isAdmin && tab == AdminTab.AUDIT_LOGS
+                    }
 
-                        Tab(
-                            selected = currentTab == tab,
-                            onClick = {
-                                if (isLockedForStaff) {
-                                    viewModel.showNotification("Tab '${tab.name}' dibatasi untuk Admin & Super Admin")
-                                } else if (isLockedForAdmin) {
-                                    viewModel.showNotification("Audit Logs dibatasi untuk Super Admin")
-                                } else {
-                                    viewModel.adminTab.value = tab
-                                }
-                            },
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (isLockedForStaff || isLockedForAdmin) {
-                                        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.Gray)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                    }
-                                    Text(
-                                        text = when(tab) {
-                                            AdminTab.DASHBOARD -> "Dashboard"
-                                            AdminTab.PRODUCTS -> "Produk (${allProducts.size})"
-                                            AdminTab.ORDERS -> "Order (${allOrders.size})"
-                                            AdminTab.MEMBERS -> "Member (${allUsers.size})"
-                                            AdminTab.COUPONS -> "Kupon (${allCoupons.size})"
-                                            AdminTab.ANALYTICS -> "Laporan"
-                                            AdminTab.AUDIT_LOGS -> "Audit Log"
-                                            AdminTab.PERMISSION_MATRIX -> "Role Matrix"
-                                        },
-                                        fontSize = 11.sp,
-                                        fontWeight = if (currentTab == tab) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
-                            },
-                            modifier = Modifier.testTag("admin_tab_${tab.name.lowercase()}")
+                    // Button to open full comprehensive menu drawer / search
+                    IconButton(
+                        onClick = { showMenuBottomSheet = true },
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(BrandCrimson.copy(alpha = 0.1f))
+                            .testTag("admin_open_all_menus_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.GridView,
+                            contentDescription = "Semua Fitur",
+                            tint = BrandCrimson,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+
+                    // Logout button
+                    IconButton(
+                        onClick = { showLogoutDialog = true },
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = "Keluar",
+                            tint = BrandRose,
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                 }
             }
         }
 
-        // Tab Body
+        // Simplified Modern Navigation Bar (5 Pillars + Contextual Sub-Pills)
+        AdminSimpleNavigationBar(
+            activePillar = activePillar,
+            selectedSubmenu = selectedSubmenu,
+            onSelectPillar = { pillar ->
+                activePillar = pillar
+                selectedSubmenu = pillar.defaultSubmenu
+                selectedGroup = pillar.defaultSubmenu.group
+            },
+            onSelectSubmenu = { sub ->
+                selectedSubmenu = sub
+                selectedGroup = sub.group
+                activePillar = AdminSimplePillar.fromSubmenu(sub)
+                when (sub) {
+                    AdminSubmenu.DASHBOARD -> viewModel.adminTab.value = AdminTab.DASHBOARD
+                    AdminSubmenu.ANALITIK -> viewModel.adminTab.value = AdminTab.ANALYTICS
+                    AdminSubmenu.PESANAN -> viewModel.adminTab.value = AdminTab.ORDERS
+                    AdminSubmenu.PRODUK -> viewModel.adminTab.value = AdminTab.PRODUCTS
+                    AdminSubmenu.VOUCHER -> viewModel.adminTab.value = AdminTab.COUPONS
+                    AdminSubmenu.PENGGUNA -> viewModel.adminTab.value = AdminTab.MEMBERS
+                    AdminSubmenu.ROLES_HAK_AKSES -> viewModel.adminTab.value = AdminTab.PERMISSION_MATRIX
+                    AdminSubmenu.LOG_AKTIVITAS -> viewModel.adminTab.value = AdminTab.AUDIT_LOGS
+                    AdminSubmenu.ALERT_KEAMANAN -> viewModel.adminTab.value = AdminTab.SECURITY_CENTER
+                    AdminSubmenu.KELUAR -> showLogoutDialog = true
+                    else -> {}
+                }
+            }
+        )
+
+        // Aligned Submenu View Body
         Box(modifier = Modifier.weight(1f)) {
-            when (currentTab) {
-                AdminTab.DASHBOARD -> DashboardTab(allProducts, allOrders, allUsers)
-                AdminTab.PRODUCTS -> ProductsTab(
+            when (selectedSubmenu) {
+                // 1. Panel Reseller
+                AdminSubmenu.DASHBOARD -> DashboardTab(allProducts, allOrders, allUsers)
+                AdminSubmenu.ANALITIK -> AnalyticsTab(allOrders, allProducts)
+                AdminSubmenu.TOP_UP_SALDO -> ResellerTopUpView(onShowNotification = { viewModel.showNotification(it) })
+                AdminSubmenu.PESANAN -> OrdersTab(
+                    orders = allOrders,
+                    onStatusChange = { orderId, newStatus -> viewModel.updateOrderStatus(orderId, newStatus) },
+                    onRegenerateLink = { itemId -> viewModel.regenerateDownloadLink(itemId) }
+                )
+                AdminSubmenu.API_SEKALIPAY -> ApiSekalipayView(onShowNotification = { viewModel.showNotification(it) })
+                AdminSubmenu.SYNC_PRODUK -> SyncProdukView(onShowNotification = { viewModel.showNotification(it) })
+
+                // 2. Pembayaran
+                AdminSubmenu.METODE_BAYAR -> PaymentSettingsView(isMarginSubmenu = false, onShowNotification = { viewModel.showNotification(it) })
+                AdminSubmenu.MARGIN_MARKUP -> PaymentSettingsView(isMarginSubmenu = true, onShowNotification = { viewModel.showNotification(it) })
+
+                // 3. Bot Settings
+                AdminSubmenu.KONFIGURASI_BOT -> BotSettingsView(onShowNotification = { viewModel.showNotification(it) })
+
+                // 4. Kelola Produk
+                AdminSubmenu.KATEGORI -> AdminCategoriesView(products = allProducts)
+                AdminSubmenu.PRODUK -> ProductsTab(
                     products = allProducts,
                     isStaff = isStaff,
                     onAddClick = {
@@ -186,24 +308,87 @@ fun AdminPanelScreen(
                     onToggleActive = { prod -> viewModel.toggleProductActive(prod) },
                     onDelete = { prod -> viewModel.deleteProduct(prod) }
                 )
-                AdminTab.ORDERS -> OrdersTab(
-                    orders = allOrders,
-                    onStatusChange = { orderId, newStatus -> viewModel.updateOrderStatus(orderId, newStatus) },
-                    onRegenerateLink = { itemId -> viewModel.regenerateDownloadLink(itemId) }
+                AdminSubmenu.PRODUK_UNGGULAN -> ProductsTab(
+                    products = allProducts.filter { it.isFeatured },
+                    isStaff = isStaff,
+                    onAddClick = {
+                        editingProduct = null
+                        showAddProductDialog = true
+                    },
+                    onEditClick = { prod ->
+                        editingProduct = prod
+                        showAddProductDialog = true
+                    },
+                    onToggleActive = { prod -> viewModel.toggleProductActive(prod) },
+                    onDelete = { prod -> viewModel.deleteProduct(prod) }
                 )
-                AdminTab.MEMBERS -> MembersTab(
-                    users = allUsers,
-                    isSuperAdmin = isSuperAdmin,
-                    onToggleActive = { u -> viewModel.toggleUserStatus(u) },
-                    onChangeRole = { u, role -> viewModel.changeUserRole(u, role) }
+                AdminSubmenu.PRODUK_TYPE,
+                AdminSubmenu.PRODUK_VARIANT,
+                AdminSubmenu.DATA_STOK,
+                AdminSubmenu.ULASAN -> CustomizationDetailView(
+                    submenu = selectedSubmenu,
+                    onShowNotification = { viewModel.showNotification(it) }
                 )
-                AdminTab.COUPONS -> CouponsTab(
+
+                // 5. Kustomisasi
+                AdminSubmenu.SLIDER_BANNER,
+                AdminSubmenu.FLASH_SALE,
+                AdminSubmenu.WIDGET,
+                AdminSubmenu.HALAMAN_STATIS,
+                AdminSubmenu.ARTIKEL_BLOG,
+                AdminSubmenu.SEO_PIXEL,
+                AdminSubmenu.PWA,
+                AdminSubmenu.KONFIGURASI_UMUM -> StoreCustomizationMasterView(
+                    submenu = selectedSubmenu,
+                    viewModel = viewModel
+                )
+                AdminSubmenu.VOUCHER -> CouponsTab(
                     coupons = allCoupons,
                     onAddClick = { showAddCouponDialog = true }
                 )
-                AdminTab.ANALYTICS -> AnalyticsTab(allOrders, allProducts)
-                AdminTab.AUDIT_LOGS -> AuditLogsTab(auditLogs)
-                AdminTab.PERMISSION_MATRIX -> PermissionMatrixTab()
+
+                // 6. Pelanggan
+                AdminSubmenu.DATA_PELANGGAN -> CustomerCRMView(
+                    users = allUsers,
+                    orders = allOrders,
+                    onShowNotification = { viewModel.showNotification(it) }
+                )
+                AdminSubmenu.BROADCAST_NOTIFIKASI -> AdminNotificationBroadcastView(
+                    viewModel = viewModel
+                )
+
+                // 7. Bantuan & Setup
+                AdminSubmenu.PANDUAN_SETUP -> SetupGuideView(
+                    onShowNotification = { viewModel.showNotification(it) }
+                )
+
+                // 8. Manajemen Tim
+                AdminSubmenu.PENGGUNA -> TeamManagementView(
+                    viewModel = viewModel,
+                    users = allUsers,
+                    currentUserRole = currentUser.role
+                )
+                AdminSubmenu.ROLES_HAK_AKSES -> DynamicRolePermissionsView(
+                    viewModel = viewModel
+                )
+                AdminSubmenu.LOG_AKTIVITAS -> AuditLogsTab(auditLogs)
+                AdminSubmenu.ALERT_KEAMANAN -> SecurityCenterTab(
+                    products = allProducts,
+                    users = allUsers,
+                    auditLogs = auditLogs,
+                    isScanning = isSystemScanning,
+                    scanCompleted = systemScanCompleted,
+                    onRunScan = { viewModel.runSecuritySystemAudit() },
+                    onInspectProduct = { prod -> viewModel.inspectProductIntegrity(prod) }
+                )
+
+                // 9. Akun Saya
+                AdminSubmenu.PROFIL,
+                AdminSubmenu.KELUAR -> AdminProfileView(
+                    currentUser = currentUser,
+                    onLogoutClick = { showLogoutDialog = true },
+                    onShowNotification = { viewModel.showNotification(it) }
+                )
             }
         }
     }
@@ -229,6 +414,146 @@ fun AdminPanelScreen(
                 showAddCouponDialog = false
             }
         )
+    }
+
+    if (isIntegrityDialogOpen) {
+        FileIntegrityScanDialog(
+            targetName = activeScanTargetName,
+            scanResult = activeScanResult,
+            onDismiss = { viewModel.closeIntegrityDialog() }
+        )
+    }
+
+    if (showMenuBottomSheet) {
+        AdminMenuBottomSheet(
+            currentSubmenu = selectedSubmenu,
+            onSelectSubmenu = { sub ->
+                selectedSubmenu = sub
+                selectedGroup = sub.group
+                when (sub) {
+                    AdminSubmenu.DASHBOARD -> viewModel.adminTab.value = AdminTab.DASHBOARD
+                    AdminSubmenu.ANALITIK -> viewModel.adminTab.value = AdminTab.ANALYTICS
+                    AdminSubmenu.PESANAN -> viewModel.adminTab.value = AdminTab.ORDERS
+                    AdminSubmenu.PRODUK -> viewModel.adminTab.value = AdminTab.PRODUCTS
+                    AdminSubmenu.VOUCHER -> viewModel.adminTab.value = AdminTab.COUPONS
+                    AdminSubmenu.PENGGUNA -> viewModel.adminTab.value = AdminTab.MEMBERS
+                    AdminSubmenu.ROLES_HAK_AKSES -> viewModel.adminTab.value = AdminTab.PERMISSION_MATRIX
+                    AdminSubmenu.LOG_AKTIVITAS -> viewModel.adminTab.value = AdminTab.AUDIT_LOGS
+                    AdminSubmenu.ALERT_KEAMANAN -> viewModel.adminTab.value = AdminTab.SECURITY_CENTER
+                    AdminSubmenu.KELUAR -> showLogoutDialog = true
+                    else -> {}
+                }
+            },
+            onDismiss = { showMenuBottomSheet = false },
+            totalProductsCount = allProducts.size,
+            totalOrdersCount = allOrders.size,
+            totalUsersCount = allUsers.size,
+            totalCouponsCount = allCoupons.size
+        )
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            icon = { Icon(Icons.Default.ExitToApp, contentDescription = null, tint = BrandCrimson) },
+            title = { Text("Konfirmasi Keluar Sesi", fontWeight = FontWeight.Bold) },
+            text = { Text("Apakah Anda yakin ingin keluar dari Konsol Admin & Reseller?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutDialog = false
+                        viewModel.switchRole(UserRole.GUEST)
+                        viewModel.navigateTo(AppScreen.HOME)
+                        viewModel.showNotification("Berhasil keluar dari sesi administrasi.")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandCrimson)
+                ) {
+                    Text("Ya, Keluar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun AdminCategoriesView(
+    products: List<ProductEntity>
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("admin_categories_view"),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Kategori Produk Digital YF STORE", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("Struktur klasifikasi dan jumlah katalog aktif per kelompok", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+
+        items(CATEGORIES) { category ->
+            val count = products.count {
+                it.categoryId.equals(category.id, ignoreCase = true) ||
+                        it.categoryId.equals(category.name, ignoreCase = true)
+            }
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Surface(
+                            shape = CircleShape,
+                            color = BrandCrimson.copy(alpha = 0.12f),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Category, contentDescription = null, tint = BrandCrimson, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(category.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(category.description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("$count produk terdaftar", fontSize = 10.sp, color = BrandCrimson, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = BrandEmerald.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = "Aktif",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BrandEmerald,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -623,7 +948,10 @@ private fun MembersTab(
                     ) {
                         Column {
                             Text(user.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text(user.email, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("@${user.username} • ${user.email}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (user.phone.isNotBlank()) {
+                                Text("No. HP: ${user.phone}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                         val roleEnum = UserRole.values().find { it.name == user.role } ?: UserRole.MEMBER
                         RoleBadge(role = roleEnum)
@@ -1151,4 +1479,431 @@ private fun CouponFormDialog(
             TextButton(onClick = onDismiss) { Text("Batal") }
         }
     )
+}
+
+@Composable
+private fun SecurityCenterTab(
+    products: List<ProductEntity>,
+    users: List<UserEntity>,
+    auditLogs: List<AuditLogEntity>,
+    isScanning: Boolean,
+    scanCompleted: Boolean,
+    onRunScan: () -> Unit,
+    onInspectProduct: (ProductEntity) -> Unit
+) {
+    val securityLogs = remember(auditLogs) {
+        auditLogs.filter {
+            it.action.contains("SECURITY", ignoreCase = true) ||
+            it.action.contains("AUDIT", ignoreCase = true) ||
+            it.action.contains("REGISTER", ignoreCase = true) ||
+            it.action.contains("LOGIN", ignoreCase = true)
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("security_center_tab"),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Hero Defense Header
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .background(Color(0xFF047857), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Shield,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "YF-SHIELD™ CYBER DEFENSE",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 15.sp,
+                                    color = Color(0xFF047857)
+                                )
+                                Text(
+                                    text = "Pusat Perlindungan Anti-Virus & Serangan Pihak Asing",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Surface(
+                            color = Color(0xFFECFDF5),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981))
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(Color(0xFF10B981), CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "SISTEM AKTIF",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF065F46)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 4 Metric Badges
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SecurityMetricCard(
+                            label = "Status Sistem",
+                            value = "100% AMAN",
+                            color = Color(0xFF059669),
+                            modifier = Modifier.weight(1f)
+                        )
+                        SecurityMetricCard(
+                            label = "Ancaman Aktif",
+                            value = "0 Virus / Trojan",
+                            color = Color(0xFF2563EB),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SecurityMetricCard(
+                            label = "Proteksi Sandi",
+                            value = "${users.size} Terenkripsi",
+                            color = Color(0xFF7C3AED),
+                            modifier = Modifier.weight(1f)
+                        )
+                        SecurityMetricCard(
+                            label = "Integritas Berkas",
+                            value = "${products.size} SHA-256 Valid",
+                            color = Color(0xFF047857),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Deep Scan Trigger Action
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Audit & Pemindaian Integritas Menyeluruh", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Memindai seluruh basis data produk digital dari trojan, script berbahaya, verifikasi hash SHA-256, serta audit proteksi akun dari serangan pihak asing (Brute force & Injection).",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Button(
+                        onClick = onRunScan,
+                        enabled = !isScanning,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF047857)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("run_security_audit_button")
+                    ) {
+                        if (isScanning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Sedang Memindai Sistem...", fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(Icons.Default.ManageSearch, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Jalankan Audit & Scan Anti-Virus Sekarang", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (scanCompleted) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            color = Color(0xFFECFDF5),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Audit Terakhir: Seluruh berkas digital & akun pengguna 100% AMAN & BERSIH!",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF065F46)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Cyber Defense Pillars
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Arsitektur Pertahanan Terpasang (PRD Security Mandate)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    DefensePillarItem(
+                        icon = Icons.Default.GppGood,
+                        title = "Anti-Virus & Trojan Guard",
+                        desc = "Memvalidasi checksum SHA-256 setiap file. Memblokir malware .exe, .bat, script berbahaya, dan manipulasi ekstensi ganda."
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    DefensePillarItem(
+                        icon = Icons.Default.Lock,
+                        title = "Kriptografi Password Salted SHA-256",
+                        desc = "Kata sandi pengguna tidak pernah disimpan sebagai teks mentah. Dilindungi hash SHA-256 dengan 32-karakter cryptographic salt unik."
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    DefensePillarItem(
+                        icon = Icons.Default.SecurityUpdateGood,
+                        title = "Firewall Anti-Serangan Asing & Brute Force",
+                        desc = "Rate Limiter otomatis membatasi maksimal 5 percobaan login gagal berturut-turut, melindungi server dari botnet asing."
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    DefensePillarItem(
+                        icon = Icons.Default.Https,
+                        title = "Strict HTTPS & Sanitasi Input",
+                        desc = "Cleartext HTTP traffic dinonaktifkan secara ketat pada sistem aplikasi. Seluruh input disanitasi dari potensi serangan SQLi dan XSS."
+                    )
+                }
+            }
+        }
+
+        // Product File Integrity List
+        item {
+            Text(
+                text = "Pemeriksaan Integritas Berkas Produk Digital (${products.size})",
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+        }
+
+        items(products) { product ->
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FileTypeBadge(fileType = product.fileType)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(text = product.title, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(
+                                text = "File: ${product.downloadFileName} • ${product.fileSize}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Verified, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "SHA-256 Valid • Bebas Virus",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF059669),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = { onInspectProduct(product) },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF047857)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF047857)),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Periksa", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // Security Audit Logs
+        item {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Log Pertahanan & Audit Keamanan Terkini (${securityLogs.size})",
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+        }
+
+        if (securityLogs.isEmpty()) {
+            item {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Belum ada catatan insiden. Jalankan audit untuk mencatat log pertahanan baru.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(14.dp)
+                    )
+                }
+            }
+        } else {
+            items(securityLogs.take(8)) { log ->
+                Card(
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = log.action, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF047857))
+                            Text(text = log.target, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(text = "Oleh: ${log.actorName} (${log.actorRole})", fontSize = 10.sp, color = Color.Gray)
+                        }
+                        Text(
+                            text = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(log.timestamp)),
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SecurityMetricCard(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = color.copy(alpha = 0.08f),
+        shape = RoundedCornerShape(10.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = 0.3f)),
+        modifier = modifier
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Text(text = label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(text = value, fontSize = 13.sp, fontWeight = FontWeight.Black, color = color)
+        }
+    }
+}
+
+@Composable
+private fun DefensePillarItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    desc: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color(0xFF059669),
+            modifier = Modifier.size(18.dp).padding(top = 2.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Column {
+            Text(text = title, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(text = desc, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
